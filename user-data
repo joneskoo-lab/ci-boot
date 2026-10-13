@@ -84,20 +84,36 @@ autoinstall:
     hostname: fc-home
     manage_etc_hosts: true
     write_files:
+      - path: /usr/local/sbin/fc-join
+        permissions: "0755"
+        content: |
+          #!/bin/sh
+          # Show the Tailscale login QR code on tty1 until this host is in the tailnet.
+          # getty can clear tty1 after the code is drawn, so redraw it until the login completes.
+          tailscale status >/dev/null 2>&1 && exit 0
+          qr=/run/fc-join.qr
+          tailscale up --qr --ssh --advertise-tags=tag:github-actions-host,tag:ssh >"$qr" 2>&1 &
+          up=$!
+          sleep 5
+          while kill -0 "$up" 2>/dev/null; do
+            { printf '\033[H\033[2J'; cat "$qr"; } >/dev/tty1
+            sleep 20
+          done
+          wait "$up" && exit 0
+          { echo "tailscale up failed, retrying:"; cat "$qr"; } >/dev/tty1
+          exit 1
       - path: /etc/systemd/system/fc-join.service
         content: |
           [Unit]
           Description=Join the tailnet: login QR code on the console until this host is in
-          After=getty@tty1.service network-online.target tailscaled.service
+          After=network-online.target tailscaled.service
           Wants=network-online.target tailscaled.service
 
           [Service]
           Type=simple
-          StandardOutput=tty
-          StandardError=tty
-          TTYPath=/dev/tty1
-          ExecCondition=/bin/sh -c '! tailscale status >/dev/null 2>&1'
-          ExecStart=/usr/bin/tailscale up --qr --ssh --advertise-tags=tag:github-actions-host,tag:ssh
+          ExecStart=/usr/local/sbin/fc-join
+          Restart=on-failure
+          RestartSec=15
 
           [Install]
           WantedBy=multi-user.target
