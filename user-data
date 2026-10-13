@@ -90,9 +90,10 @@ autoinstall:
           #!/bin/sh
           # Show the Tailscale login QR code on tty1 until this host is in the tailnet.
           # getty can clear tty1 after the code is drawn, so redraw it until the login completes.
+          # Output goes to a file, so force full blocks: "auto" falls back to "#" characters off a terminal.
           tailscale status >/dev/null 2>&1 && exit 0
           qr=/run/fc-join.qr
-          tailscale up --qr --ssh --advertise-tags=tag:github-actions-host,tag:ssh >"$qr" 2>&1 &
+          tailscale up --qr --qr-format=large --ssh --advertise-tags=tag:github-actions-host,tag:ssh >"$qr" 2>&1 &
           up=$!
           sleep 5
           while kill -0 "$up" 2>/dev/null; do
