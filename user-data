@@ -21,6 +21,9 @@ autoinstall:
       - {type: mount, id: root-mount, device: root-fs, path: /}
       # The rest of the disk, unformatted: runner storage. bootstrap.sh takes it as POOL_DEV=/dev/disk/by-partlabel/fcpool
       - {type: partition, id: pool, device: disk0, size: -1, partition_name: fcpool}
+  # Subiquity drops partition_name from the storage config, so name the pool partition (3rd on the root disk) here.
+  late-commands:
+    - sh -c 'd=/dev/$(lsblk -no PKNAME "$(findmnt -no SOURCE /target)"); sfdisk --no-reread --part-label "$d" 3 fcpool'
   # Tailscale comes from its own apt repository during the install, so first boot needs no download.
   apt:
     sources:
