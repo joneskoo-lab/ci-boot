@@ -24,6 +24,8 @@ autoinstall:
   # Subiquity drops partition_name from the storage config, so name the pool partition (3rd on the root disk) here.
   late-commands:
     - sh -c 'd=/dev/$(lsblk -no PKNAME "$(findmnt -no SOURCE /target)"); sfdisk --no-reread --part-label "$d" 3 fcpool'
+    # Optional unattended join: a USB stick labelled FCJOIN holding ts-authkey (from the mint-join-key workflow).
+    - sh -c 'd=$(blkid -L FCJOIN) || exit 0; mkdir -p /run/fcjoin && mount -o ro "$d" /run/fcjoin && [ -s /run/fcjoin/ts-authkey ] && install -m 600 /run/fcjoin/ts-authkey /target/etc/fc-join.key; umount /run/fcjoin; true'
   # Tailscale comes from its own apt repository during the install, so first boot needs no download.
   apt:
     sources:
@@ -95,6 +97,16 @@ autoinstall:
           # getty can clear tty1 after the code is drawn, so redraw it until the login completes.
           # Output goes to a file, so force full blocks: "auto" falls back to "#" characters off a terminal.
           tailscale status >/dev/null 2>&1 && exit 0
+          say() { echo "$*"; echo "$*" >/dev/tty1; }
+          # A single-use key from the FCJOIN install stick joins without anyone at the console; it is deleted either way.
+          key=/etc/fc-join.key
+          if [ -s "$key" ]; then
+            say "Joining the tailnet with the key from the install stick"
+            if timeout 120 tailscale up --auth-key="file:$key" --ssh >/run/fc-join.log 2>&1; then
+              rm -f "$key"; say "Joined the tailnet"; exit 0
+            fi
+            rm -f "$key"; say "The join key was rejected, showing the QR code instead: $(cat /run/fc-join.log)"; sleep 10
+          fi
           qr=/run/fc-join.qr
           tailscale up --qr --qr-format=large --ssh --advertise-tags=tag:github-actions-host,tag:ssh >"$qr" 2>&1 &
           up=$!
